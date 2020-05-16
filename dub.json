@@ -4,9 +4,7 @@
 	],
 	"copyright": "Copyright © 2020, Fredrik Söderström",
 	"dependencies": {
-		"dutils-data": {
-			"path": "../data"
-		},
+		"dutils-data": "~>2.0.1",
 		"dutils-random": "~>1.1.0",
 		"hunt-jwt": ">=0.1.0-beta.1 <0.2.0-0",
 		"rabbitmq": "~>0.2.4"
