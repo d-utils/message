@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.1.3](https://github.com/d-utils/message/compare/v1.1.2...v1.1.3) (2020-05-16)
+
+
+### Bug Fixes
+
+* **ci:** test setup ([e4e4b24](https://github.com/d-utils/message/commit/e4e4b24a1e5183a547f0c7d2e29e52300154ee5a))
+
 ### [1.1.2](https://github.com/d-utils/message/compare/v1.1.1...v1.1.2) (2020-05-16)
 
 
