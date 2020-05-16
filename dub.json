@@ -1,0 +1,19 @@
+{
+	"authors": [
+		"Fredrik Söderström"
+	],
+	"copyright": "Copyright © 2020, Fredrik Söderström",
+	"dependencies": {
+		"dutils-data": {
+			"path": "../data"
+		},
+		"dutils-random": "~>1.1.0",
+		"hunt-jwt": ">=0.1.0-beta.1 <0.2.0-0",
+		"rabbitmq": "~>0.2.4"
+	},
+	"description": "Send structs as BSON messages via RabbitMQ",
+	"homepage": "https://github.com/d-utils/message",
+	"license": "MIT",
+	"name": "dutils-message",
+	"targetType": "library"
+}
