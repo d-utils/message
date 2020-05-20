@@ -236,6 +236,16 @@ class Client {
     }
   }
 
+  void keepUpdating() {
+    import core.thread : Thread;
+    import core.time : msecs;
+
+    while (this.isConnected) {
+      this.update();
+      Thread.sleep(1.msecs);
+    }
+  }
+
   package void declareQueue(string queueName, QueueType type) {
     try {
       {
@@ -259,7 +269,7 @@ class Client {
 }
 
 /**
- * AMQPClient#connect/isConnected/close - connect to the AMQP server
+ * Client#connect/isConnected/close - connect to the AMQP server
  */
 unittest {
   auto client = new Client();
@@ -283,7 +293,7 @@ unittest {
 }
 
 /**
- * AMQPClient#subscribe/publish - subscribe/publish to a queue on an AMQP server
+ * Client#subscribe/publish - subscribe/publish to a queue on an AMQP server
  */
 unittest {
   import core.time : seconds;
@@ -333,7 +343,7 @@ unittest {
 }
 
 /**
- * AMQPClient#request - request server/client
+ * Client#request - request server/client
  */
 unittest {
   import core.time : seconds, msecs;
@@ -341,10 +351,7 @@ unittest {
   import dutils.data.bson : BSON;
 
   auto client = new Client();
-  client.connect();
-
   auto service = new Client();
-  service.connect();
 
   service.subscribe("testservice", (Message request) {
     if (request.type == "Ping") {
@@ -404,4 +411,34 @@ unittest {
   assert(errorResponse.correlationId == badMessage.correlationId, "Expected correlationId to match");
   assert(errorResponse.payload["message"].get!string == "Unknown message type: BadType",
       "Expected payload to be: Unknown message type: BadType");
+}
+
+/**
+ * Client#keepUpdating - should loop until
+ */
+unittest {
+  import dutils.data.bson : BSON;
+
+  auto client = new Client();
+
+  struct Hello {
+    string from;
+  }
+
+  auto gotMessage = false;
+
+  Subscription subscription;
+  subscription = client.subscribe("testservice", (Message message) {
+    if (message.type == "Hello" && message.payload["from"].get!string == "Pelle") {
+      gotMessage = true;
+      client.close();
+    }
+  });
+
+  auto message = Message.from(Hello("Pelle"));
+  client.publish("testservice", message);
+
+  client.keepUpdating();
+
+  assert(gotMessage, "Should have recieved a Hello message");
 }
