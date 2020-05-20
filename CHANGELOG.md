@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.2.0](https://github.com/d-utils/message/compare/v1.1.3...v1.2.0) (2020-05-20)
+
+
+### Features
+
+* **Client#keepUpdating:** update until disconnect ([b778a20](https://github.com/d-utils/message/commit/b778a20a69bff2e33ab0c643e3584a5461fc6dbb))
+* **Message#to:** convert Message to struct ([6618b05](https://github.com/d-utils/message/commit/6618b055b348d5465004fe93e0ea04407d6a3fae))
+
 ### [1.1.3](https://github.com/d-utils/message/compare/v1.1.2...v1.1.3) (2020-05-16)
 
 
