@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.4.0](https://github.com/d-utils/message/compare/v1.3.0...v1.4.0) (2020-05-29)
+
+
+### Features
+
+* **payload:** add BAD_REQUEST and INTERNAL_ERROR ([f662edf](https://github.com/d-utils/message/commit/f662edfb137ac096ee38bd03dbfb00ed2b02cc0a))
+
 ## [1.3.0](https://github.com/d-utils/message/compare/v1.2.0...v1.3.0) (2020-05-29)
 
 
