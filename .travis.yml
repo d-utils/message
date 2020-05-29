@@ -1,37 +1,28 @@
 dist: bionic
 
-language: d
-
 services:
   - rabbitmq
 
 before_install:
-  # Install newer librabbitmq-dev
+  - sudo apt update
+  - curl -fsS https://dlang.org/install.sh | bash -s dmd
+  - sourcefile=$(ls ~/dlang/dmd-*/activate)
+  - source $sourcefile
+  - sudo apt install -y curl wget
+  - sudo wget https://netcologne.dl.sourceforge.net/project/d-apt/files/d-apt.list -O /etc/apt/sources.list.d/d-apt.list
+  - sudo apt-get update --allow-insecure-repositories && sudo apt-get -y --allow-unauthenticated install --reinstall d-apt-keyring && sudo apt-get update
+  - sudo apt install -y dub
+  - cat /etc/lsb-release
+  - dmd --version
+  - dub --version
+
   - sudo echo "deb http://neurodebian.ovgu.de/debian/ sid main contrib non-free" >> /etc/apt/sources.list
   - sudo apt-key adv --recv-keys --keyserver pool.sks-keyservers.net 0xA5D32F012649A5A9 || sudo apt-key adv --keyserver hkp://keys.gnupg.net --recv-keys 0xA5D32F012649A5A9 || sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 0xA5D32F012649A5A9
   - sudo apt update
-  - sudo apt -y install rabbitmq-server wget dialog apt-utils python-boto python3-boto
+  - sudo apt -y install rabbitmq-server wget dialog apt-utils python-boto python3-boto librabbitmq-dev librabbitmq
 
-  - wget http://ftp.br.debian.org/debian/pool/main/g/glibc/libc-l10n_2.30-8_all.deb
-  - wget http://ftp.br.debian.org/debian/pool/main/g/glibc/libc-bin_2.30-8_amd64.deb
-  - wget http://ftp.br.debian.org/debian/pool/main/g/glibc/locales_2.30-8_all.deb
-  - wget http://ftp.br.debian.org/debian/pool/main/g/gcc-10/gcc-10-base_10.1.0-3_amd64.deb
-  - wget http://ftp.br.debian.org/debian/pool/main/libx/libxcrypt/libcrypt1_4.4.16-1_amd64.deb
-  - wget http://ftp.br.debian.org/debian/pool/main/g/gcc-10/libgcc-s1_10.1.0-3_amd64.deb
-  - wget http://ftp.br.debian.org/debian/pool/main/g/glibc/libc6_2.30-8_amd64.deb
-  - sudo dpkg --auto-deconfigure -i libc-l10n_2.30-8_all.deb libc-bin_2.30-8_amd64.deb locales_2.30-8_all.deb gcc-10-base_10.1.0-3_amd64.deb libc6_2.30-8_amd64.deb libcrypt1_4.4.16-1_amd64.deb libgcc-s1_10.1.0-3_amd64.deb
-
-  - wget http://ftp.br.debian.org/debian/pool/main/o/openssl/libssl1.1_1.1.1g-1_amd64.deb
-  - sudo dpkg --force-all --auto-deconfigure -i libssl1.1_1.1.1g-1_amd64.deb
-
-  - wget http://ftp.br.debian.org/debian/pool/main/o/openssl/libssl-dev_1.1.1g-1_amd64.deb
-  - sudo dpkg -i libssl-dev_1.1.1g-1_amd64.deb
-
-  - wget http://ftp.br.debian.org/debian/pool/main/libr/librabbitmq/librabbitmq4_0.10.0-1_amd64.deb
-  - sudo dpkg -i librabbitmq4_0.10.0-1_amd64.deb
-
-  - wget http://ftp.br.debian.org/debian/pool/main/libr/librabbitmq/librabbitmq-dev_0.10.0-1_amd64.deb
-  - sudo dpkg -i librabbitmq-dev_0.10.0-1_amd64.deb
+script:
+  - dub test
 
 branches:
   only:
