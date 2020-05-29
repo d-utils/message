@@ -13,9 +13,9 @@ before_install:
   - wget http://ftp.br.debian.org/debian/pool/main/g/glibc/libc-l10n_2.30-8_all.deb
   - wget http://ftp.br.debian.org/debian/pool/main/g/glibc/libc-bin_2.30-8_amd64.deb
   - wget http://ftp.br.debian.org/debian/pool/main/g/glibc/locales_2.30-8_all.deb
-  - wget http://ftp.br.debian.org/debian/pool/main/g/gcc-10/gcc-10-base_10.1.0-1_amd64.deb
+  - wget http://ftp.br.debian.org/debian/pool/main/g/gcc-10/gcc-10-base_10.1.0-3_amd64.deb
   - wget http://ftp.br.debian.org/debian/pool/main/libx/libxcrypt/libcrypt1_4.4.16-1_amd64.deb
-  - wget http://ftp.br.debian.org/debian/pool/main/g/gcc-10/libgcc-s1_10.1.0-1_amd64.deb
+  - wget http://ftp.br.debian.org/debian/pool/main/g/gcc-10/libgcc-s1_10.1.0-3_amd64.deb
   - wget http://ftp.br.debian.org/debian/pool/main/g/glibc/libc6_2.30-8_amd64.deb
   - sudo dpkg --auto-deconfigure -i libc-l10n_2.30-8_all.deb libc-bin_2.30-8_amd64.deb locales_2.30-8_all.deb gcc-10-base_10.1.0-1_amd64.deb libc6_2.30-8_amd64.deb libcrypt1_4.4.16-1_amd64.deb libgcc-s1_10.1.0-1_amd64.deb
 
