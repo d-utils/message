@@ -173,6 +173,19 @@ struct ResponsePayloadOK {
 }
 
 /**
+ * The standard message type to send back when the request message has an error,
+ * being less specific than ResponsePayloadInvalid or ResponsePayloadBadType it is better
+ * to try to use one of them as much as possible over this payload.
+ */
+@SetResponseStatus(ResponseStatus.BAD_REQUEST)
+struct ResponsePayloadBadRequest {
+  /**
+   * An array with the validation errors
+   */
+  string message;
+}
+
+/**
  * The standard message type to send back when there are validation errors from the data that the client sent
  */
 @SetResponseStatus(ResponseStatus.INVALID)
@@ -204,6 +217,14 @@ struct ResponsePayloadBadType {
  */
 @SetResponseStatus(ResponseStatus.FORBIDDEN)
 struct ResponsePayloadForbidden {
+}
+
+/**
+ * The standard message type to send back when there was an internal error, this message will not reveal any details
+ * but best practice is to also log the error on the service side.
+ */
+@SetResponseStatus(ResponseStatus.INTERNAL_ERROR)
+struct ResponsePayloadInternalError {
 }
 
 struct UDA {
