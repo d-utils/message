@@ -19,7 +19,7 @@ before_install:
   - sudo echo "deb http://neurodebian.ovgu.de/debian/ sid main contrib non-free" >> /etc/apt/sources.list
   - sudo apt-key adv --recv-keys --keyserver pool.sks-keyservers.net 0xA5D32F012649A5A9 || sudo apt-key adv --keyserver hkp://keys.gnupg.net --recv-keys 0xA5D32F012649A5A9 || sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 0xA5D32F012649A5A9
   - sudo apt update
-  - sudo apt -y install rabbitmq-server wget dialog apt-utils python-boto python3-boto librabbitmq-dev librabbitmq
+  - sudo apt -y install rabbitmq-server wget dialog apt-utils python-boto python3-boto librabbitmq-dev
 
 script:
   - dub test
