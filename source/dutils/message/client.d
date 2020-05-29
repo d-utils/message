@@ -8,7 +8,7 @@ import symmetry.api.rabbitmq;
 import dutils.validation.validate : validate;
 import dutils.validation.constraints : ValidateRequired, ValidateMinimumLength;
 import dutils.random : randomUUID;
-import dutils.message.message : Message;
+import dutils.message.message : Message, ResponseStatus, SetResponseStatus;
 import dutils.message.subscription : Subscription;
 import dutils.message.exceptions : ConnectException, PublishException, DeclareQueueException;
 
@@ -119,6 +119,10 @@ class Client {
     this.connection = null;
   }
 
+  void publish(string queueName, Message message) {
+    this.publish(queueName, message, QueueType.AUTO_DELETE);
+  }
+
   void publish(string queueName, ref Message message) {
     this.publish(queueName, message, QueueType.AUTO_DELETE);
   }
@@ -150,10 +154,33 @@ class Client {
         messageProperties.reply_to = amqp_string(message.replyToQueueName);
       }
 
+      /**
+       * Example in C for constructing header entries:
+       * https://github.com/alanxz/rabbitmq-c/blob/a65c64c0efd883f3e200bd8831ad3ca066ea523c/tests/test_merge_capabilities.c#L163
+       */
+      amqp_table_entry_t[2] headerEntries;
+      int headersIndex = -1;
+
+      import std.string : toStringz;
+
       if (message.token != "") {
-        messageProperties._flags |= AMQP_BASIC_USER_ID_FLAG;
-        messageProperties.user_id = amqp_string(message.token);
+        messageProperties._flags |= AMQP_BASIC_HEADERS_FLAG;
+        headersIndex++;
+        headerEntries[headersIndex].key = amqp_cstring_bytes("token");
+        headerEntries[headersIndex].value.kind = AMQP_FIELD_KIND_UTF8;
+        headerEntries[headersIndex].value.value.bytes = amqp_cstring_bytes(message.token.toStringz);
       }
+
+      if (message.responseStatus != ResponseStatus.NOT_APPLICABLE) {
+        messageProperties._flags |= AMQP_BASIC_HEADERS_FLAG;
+        headersIndex++;
+        headerEntries[headersIndex].key = amqp_cstring_bytes("responseStatus");
+        headerEntries[headersIndex].value.kind = AMQP_FIELD_KIND_U16;
+        headerEntries[headersIndex].value.value.u16 = message.responseStatus.to!ushort;
+      }
+
+      messageProperties.headers.num_entries = headersIndex + 1;
+      messageProperties.headers.entries = headerEntries.ptr;
 
       amqp_bytes_t payload;
       auto data = cast(char[]) message.payload.data;
@@ -346,30 +373,28 @@ unittest {
  * Client#request - request server/client
  */
 unittest {
+  import std.conv : to;
   import core.time : seconds, msecs;
   import core.thread : Thread;
+
   import dutils.data.bson : BSON;
+  import dutils.message.message : ResponsePayloadBadType;
 
   auto client = new Client();
   auto service = new Client();
 
   service.subscribe("testservice", (Message request) {
     if (request.type == "Ping") {
+      @SetResponseStatus(ResponseStatus.OK)
       struct Pong {
         string story;
       }
 
       auto payload = Pong("Playing ping pong with " ~ request.payload["name"].get!string);
-      auto response = Message.from(payload, request.correlationId);
-      service.publish(request.replyToQueueName, response);
+      service.publish(request.replyToQueueName, request.createResponse(payload));
     } else {
-      struct Error {
-        string message;
-      }
-
-      auto payload = Error("Unknown message type: " ~ request.type);
-      auto response = Message.from(payload, request.correlationId);
-      service.publish(request.replyToQueueName, response);
+      auto payload = ResponsePayloadBadType(request.type, ["Ping"]);
+      service.publish(request.replyToQueueName, request.createResponse(payload));
     }
   });
 
@@ -379,6 +404,7 @@ unittest {
 
   auto payload = Ping("Anna");
   auto message = Message.from(payload);
+  message.token = "this is a placeholder token";
 
   Message response;
   client.request("testservice", message, (Message requestResponse) {
@@ -406,11 +432,19 @@ unittest {
   assert(response.correlationId == message.correlationId, "Expected correlationId to match");
   assert(response.payload["story"].get!string == "Playing ping pong with Anna",
       "Expected payload to be: Playing ping pong with Anna");
+  assert(response.responseStatus == ResponseStatus.OK,
+      "Expected responseStatus to be ResponseStatus.OK got " ~ response.responseStatus.to!string);
+  assert(response.token == "this is a placeholder token",
+      "Expected response.token to equal request.token, got: " ~ response.token);
 
-  assert(errorResponse.type == "Error", "Expected message type to be Error");
+  assert(errorResponse.type == "ResponsePayloadBadType",
+      "Expected message type to be ResponsePayloadBadType");
   assert(errorResponse.correlationId == badMessage.correlationId, "Expected correlationId to match");
-  assert(errorResponse.payload["message"].get!string == "Unknown message type: BadType",
-      "Expected payload to be: Unknown message type: BadType");
+  assert(errorResponse.payload["supportedTypes"][0].get!string == "Ping",
+      "Expected supportedTypes to include Ping");
+  assert(errorResponse.responseStatus == ResponseStatus.BAD_TYPE,
+      "Expected responseStatus to be ResponseStatus.BAD_TYPE got "
+      ~ errorResponse.responseStatus.to!string);
 }
 
 /**

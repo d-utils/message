@@ -7,7 +7,7 @@ import std.conv : to;
 import symmetry.api.rabbitmq;
 
 import dutils.data.bson : BSON;
-import dutils.message.message : Message;
+import dutils.message.message : Message, ResponseStatus;
 import dutils.message.client : Client, QueueType;
 import dutils.message.exceptions : SubscribeQueueException, MessageBodyException;
 
@@ -123,8 +123,7 @@ class Subscription {
     message.type = "Error";
 
     if (envelope.message.properties._flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
-      message.correlationId = UUID(fromBytes(envelope.message.properties.correlation_id.bytes,
-          envelope.message.properties.correlation_id.len).to!string);
+      message.correlationId = UUID(envelope.message.properties.correlation_id.asString());
     }
 
     message.payload = BSON(exception.message.to!string);
@@ -138,32 +137,44 @@ class Subscription {
     auto message = Message();
 
     if (envelope.message.properties._flags & AMQP_BASIC_EXPIRATION_FLAG) {
-      auto value = fromBytes(envelope.message.properties.expiration.bytes,
-          envelope.message.properties.expiration.len).to!string;
+      auto value = envelope.message.properties.expiration.asString();
       message.expiration = msecs(value.to!long);
     }
 
     if (envelope.message.properties._flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
-      message.correlationId = UUID(fromBytes(envelope.message.properties.correlation_id.bytes,
-          envelope.message.properties.correlation_id.len).to!string);
+      message.correlationId = UUID(envelope.message.properties.correlation_id.asString());
     }
 
     if (envelope.message.properties._flags & AMQP_BASIC_TYPE_FLAG) {
-      message.type = fromBytes(envelope.message.properties.type.bytes,
-          envelope.message.properties.type.len).to!string;
+      message.type = envelope.message.properties.type.asString();
     }
 
     if (envelope.message.properties._flags & AMQP_BASIC_REPLY_TO_FLAG) {
-      const value = fromBytes(envelope.message.properties.reply_to.bytes,
-          envelope.message.properties.reply_to.len).to!string;
+      const value = envelope.message.properties.reply_to.asString();
       if (value != "") {
         message.replyToQueueName = value;
       }
     }
 
-    if (envelope.message.properties._flags & AMQP_BASIC_USER_ID_FLAG) {
-      const value = fromBytes(envelope.message.properties.user_id.bytes,
-          envelope.message.properties.user_id.len).to!string;
+    if (envelope.message.properties._flags & AMQP_BASIC_HEADERS_FLAG) {
+      auto headers = envelope.message.properties.headers;
+      for (int index = 0; index < headers.num_entries; index++) {
+        auto entry = headers.entries[index];
+        auto key = entry.key.asString();
+
+        if (key == "token") {
+          message.token = entry.value.value.bytes.asString();
+        } else if (key == "responseStatus") {
+          try {
+            message.responseStatus = (cast(int) entry.value.value.u16).to!ResponseStatus;
+          } catch (Exception exception) {
+            // TODO: Add more specific exception than mentions that the responseStatus parsing failed
+            throw new MessageBodyException(message.type);
+          }
+        }
+      }
+
+      const value = envelope.message.properties.user_id.asString();
       if (value != "") {
         message.token = value;
       }
@@ -185,4 +196,8 @@ class Subscription {
 
 private char[] fromBytes(void* ptr, ulong len) {
   return (cast(char*) ptr)[0 .. len].dup;
+}
+
+private string asString(amqp_bytes_t bytes) {
+  return (cast(char*) bytes.bytes)[0 .. bytes.len].idup;
 }

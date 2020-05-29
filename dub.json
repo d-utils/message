@@ -6,7 +6,8 @@
 	"dependencies": {
 		"dutils-data": "~>2.0.1",
 		"dutils-random": "~>1.1.0",
-		"rabbitmq": "~>0.2.4"
+		"rabbitmq": "~>0.2.4",
+		"tested": "~>0.9.4"
 	},
 	"description": "Send structs as BSON messages via RabbitMQ",
 	"homepage": "https://github.com/d-utils/message",
