@@ -4,6 +4,7 @@ import core.time : Duration, seconds;
 import std.uuid : UUID;
 
 import dutils.data.bson : BSON, serializeToBSON;
+import dutils.data.json : JSON;
 import dutils.validation.validate : validate, ValidationError;
 import dutils.random : randomUUID;
 import dutils.message.exceptions : TypeMismatchException;
@@ -94,6 +95,14 @@ struct Message {
     message.responseStatus = responseStatus;
 
     return message;
+  }
+
+  JSON toJSON() {
+    return serializeToBSON(this).toJSON();
+  }
+
+  string toString() {
+    return this.toJSON().toString();
   }
 }
 
