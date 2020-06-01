@@ -62,10 +62,6 @@ struct Message {
     return result;
   }
 
-  @property bool isError() {
-    return this.type == "Error";
-  }
-
   @property bool isEmpty() {
     return this.type == "";
   }
