@@ -4,6 +4,7 @@ import std.uuid : UUID;
 import std.exception : enforce;
 
 import symmetry.api.rabbitmq;
+import util.log : Log, stderrLogger, stdoutLogger, LogLevel, orBelow;
 
 import dutils.validation.validate : validate;
 import dutils.validation.constraints : ValidateRequired, ValidateMinimumLength;
@@ -33,6 +34,11 @@ enum QueueType {
   AUTO_DELETE
 }
 
+private struct ClientState {
+  bool closeAfterUpdate = false;
+  bool updateRunning = false;
+}
+
 class Client {
   package amqp_connection_state_t connection;
   package Subscription[] subscriptions;
@@ -41,6 +47,8 @@ class Client {
   private Subscription responseSubscription;
   private ushort lastSubscriptionChannel = 1;
   package QueueType[string] declaredQueues;
+  package Log logger;
+  private ClientState state;
 
   @property ClientParameters parameters() {
     return this._parameters;
@@ -55,6 +63,8 @@ class Client {
   }
 
   this(const ClientParameters parameters) {
+    this.logger = Log(stderrLogger, stdoutLogger(LogLevel.info.orBelow));
+
     validate(parameters);
     this._parameters = parameters;
     this.connect();
@@ -99,6 +109,11 @@ class Client {
       return;
     }
 
+    if (this.state.updateRunning) {
+      this.state.closeAfterUpdate = true;
+      return;
+    }
+
     try {
       foreach (subscription; this.subscriptions) {
         subscription.close();
@@ -117,6 +132,7 @@ class Client {
 
     this.responseSubscription = null;
     this.connection = null;
+    this.state.closeAfterUpdate = false;
   }
 
   void publish(string queueName, Message message) {
@@ -222,6 +238,7 @@ class Client {
     });
   }
 
+  // TODO: add expiration timeout handling, run callback with a locally generated timeout response
   void request(string queueName, Message requestMessage, void delegate(Message) callback) {
     if (this.responseSubscription is null) {
       this.createResponseSubscription();
@@ -251,6 +268,8 @@ class Client {
   void update() {
     import std.algorithm : remove, countUntil;
 
+    this.state.updateRunning = true;
+
     foreach (subscription; this.subscriptions) {
       if (subscription.isClosed) {
         auto index = this.subscriptions.countUntil(this);
@@ -260,6 +279,11 @@ class Client {
       } else {
         subscription.fiber.call();
       }
+    }
+
+    this.state.updateRunning = false;
+    if (this.state.closeAfterUpdate) {
+      this.close();
     }
   }
 
@@ -462,6 +486,7 @@ unittest {
   auto gotMessage = false;
 
   Subscription subscription;
+
   subscription = client.subscribe("testservice", (Message message) {
     if (message.type == "Hello" && message.payload["from"].get!string == "Pelle") {
       gotMessage = true;

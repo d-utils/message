@@ -6,6 +6,7 @@
 	"dependencies": {
 		"dutils-data": "~>2.0.1",
 		"dutils-random": "~>1.1.0",
+		"log": "~>0.4.3",
 		"rabbitmq": "~>0.2.4",
 		"tested": "~>0.9.4"
 	},

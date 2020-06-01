@@ -74,6 +74,7 @@ class Subscription {
 
     while (!this.isClosed) {
       Message message;
+      bool gotException = false;
       amqp_envelope_t envelope;
 
       try {
@@ -100,35 +101,26 @@ class Subscription {
         }
 
         message = this.envelopeToMessage(&envelope);
-
-        // TODO: add handling for redelivery and handling for when the subscribe callback crashes
-        amqp_basic_ack(this.client.connection, this.channel, envelope.delivery_tag, false);
+        this.callback(message);
       } catch (Exception exception) {
-        message = this.errorToMessage(exception, &envelope);
+        this.client.logger.error(exception);
+        gotException = exception is null;
+      }
+
+      // TODO: evaluate if this extra message re-delivery try is working as intended, should there be more retrys?
+      if (gotException == true) {
+        amqp_basic_reject(this.client.connection, this.channel,
+            envelope.delivery_tag, envelope.redelivered == false);
+      } else {
+        amqp_basic_ack(this.client.connection, this.channel, envelope.delivery_tag, false);
       }
 
       amqp_destroy_envelope(&envelope);
-
-      this.callback(message);
 
       Fiber.yield();
     }
 
     this.close();
-  }
-
-  private Message errorToMessage(Exception exception, amqp_envelope_t* envelope) {
-    auto message = Message();
-
-    message.type = "Error";
-
-    if (envelope.message.properties._flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
-      message.correlationId = UUID(envelope.message.properties.correlation_id.asString());
-    }
-
-    message.payload = BSON(exception.message.to!string);
-
-    return message;
   }
 
   private Message envelopeToMessage(amqp_envelope_t* envelope) {
