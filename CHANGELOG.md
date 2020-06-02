@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [2.0.0](https://github.com/d-utils/message/compare/v1.5.0...v2.0.0) (2020-06-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* **expires:** Remove "Payload" from all standard payload structs. Set
+default expiration to 3600 seconds from message creation. Run callback
+with ResponseTimeout type whenever a request message expires.
+* **message:** Removes [Message].isError property accessor
+* **ack:** Will not run subscription callback when a message
+cannot be parsed.
+
+### Features
+
+* **ack:** requeue failed messages ([92bcad6](https://github.com/d-utils/message/commit/92bcad69afe6e777bab66fa25bc243a0f87f7c6b))
+* **expires:** expires messages ([2f1d36b](https://github.com/d-utils/message/commit/2f1d36b8f3a5b91477d8cf279230edda8842eea4))
+
+
+* **message:** remove unused isError property ([f086b46](https://github.com/d-utils/message/commit/f086b46e007c165abd41fd96e5c0f17f3ac3303f))
+
 ## [1.5.0](https://github.com/d-utils/message/compare/v1.4.1...v1.5.0) (2020-05-31)
 
 
