@@ -3,13 +3,14 @@ module dutils.message.client;
 import std.uuid : UUID;
 import std.exception : enforce;
 
+import std.datetime.systime : Clock;
 import symmetry.api.rabbitmq;
 import util.log : Log, stderrLogger, stdoutLogger, LogLevel, orBelow;
 
 import dutils.validation.validate : validate;
 import dutils.validation.constraints : ValidateRequired, ValidateMinimumLength;
 import dutils.random : randomUUID;
-import dutils.message.message : Message, ResponseStatus, SetResponseStatus;
+import dutils.message.message : Message, ResponseStatus, SetResponseStatus, ResponseTimeout;
 import dutils.message.subscription : Subscription;
 import dutils.message.exceptions : ConnectException, PublishException, DeclareQueueException;
 
@@ -39,11 +40,16 @@ private struct ClientState {
   bool updateRunning = false;
 }
 
+private struct Request {
+  Message message;
+  void delegate(Message) callback;
+}
+
 class Client {
   package amqp_connection_state_t connection;
   package Subscription[] subscriptions;
   private ClientParameters _parameters;
-  private void delegate(Message)[UUID] requestCallbacks;
+  private Request[UUID] requests;
   private Subscription responseSubscription;
   private ushort lastSubscriptionChannel = 1;
   package QueueType[string] declaredQueues;
@@ -125,7 +131,6 @@ class Client {
             "Closing connection");
         die_on_error(amqp_destroy_connection(this.connection), "Ending connection");
       }
-
     } catch (Exception exception) {
       // TODO: add error handler
     }
@@ -161,9 +166,11 @@ class Client {
 
       messageProperties.content_type = amqp_string("application/octet-stream");
       messageProperties.delivery_mode = 2; /* persistent delivery mode */
-      messageProperties.expiration = amqp_string((message.expiration.total!"msecs").to!string);
       messageProperties.correlation_id = amqp_string(message.correlationId.toString());
       messageProperties.type = amqp_string(message.type);
+
+      auto expiration = message.expires - Clock.currTime();
+      messageProperties.expiration = amqp_string((expiration.total!"msecs").to!string);
 
       if (message.replyToQueueName != "") {
         messageProperties._flags |= AMQP_BASIC_REPLY_TO_FLAG;
@@ -174,13 +181,26 @@ class Client {
        * Example in C for constructing header entries:
        * https://github.com/alanxz/rabbitmq-c/blob/a65c64c0efd883f3e200bd8831ad3ca066ea523c/tests/test_merge_capabilities.c#L163
        */
-      amqp_table_entry_t[2] headerEntries;
-      int headersIndex = -1;
-
       import std.string : toStringz;
 
+      messageProperties._flags |= AMQP_BASIC_HEADERS_FLAG;
+
+      int headersIndex = -1;
+      amqp_table_entry_t[4] headerEntries;
+
+      headersIndex++;
+      headerEntries[headersIndex].key = amqp_cstring_bytes("created");
+      headerEntries[headersIndex].value.kind = AMQP_FIELD_KIND_UTF8;
+      headerEntries[headersIndex].value.value.bytes = amqp_cstring_bytes(
+          message.created.toISOExtString().toStringz);
+
+      headersIndex++;
+      headerEntries[headersIndex].key = amqp_cstring_bytes("expires");
+      headerEntries[headersIndex].value.kind = AMQP_FIELD_KIND_UTF8;
+      headerEntries[headersIndex].value.value.bytes = amqp_cstring_bytes(
+          message.expires.toISOExtString().toStringz);
+
       if (message.token != "") {
-        messageProperties._flags |= AMQP_BASIC_HEADERS_FLAG;
         headersIndex++;
         headerEntries[headersIndex].key = amqp_cstring_bytes("token");
         headerEntries[headersIndex].value.kind = AMQP_FIELD_KIND_UTF8;
@@ -188,7 +208,6 @@ class Client {
       }
 
       if (message.responseStatus != ResponseStatus.NOT_APPLICABLE) {
-        messageProperties._flags |= AMQP_BASIC_HEADERS_FLAG;
         headersIndex++;
         headerEntries[headersIndex].key = amqp_cstring_bytes("responseStatus");
         headerEntries[headersIndex].value.kind = AMQP_FIELD_KIND_U16;
@@ -231,36 +250,40 @@ class Client {
     auto responseQueueName = "responselistener-" ~ randomUUID().toString();
 
     this.responseSubscription = this.subscribe(responseQueueName, (Message response) {
-      if (response.correlationId in this.requestCallbacks) {
-        this.requestCallbacks[response.correlationId](response);
-        this.requestCallbacks.remove(response.correlationId);
+      if (response.correlationId in this.requests) {
+        auto request = this.requests[response.correlationId];
+
+        try {
+          if (request.message.hasExpired == false) {
+            request.callback(response);
+          } else {
+            request.callback(request.message.createResponse(ResponseTimeout()));
+          }
+        } catch (Exception exception) {
+          this.logger.error(exception);
+        }
+
+        this.requests.remove(response.correlationId);
       }
     });
   }
 
-  // TODO: add expiration timeout handling, run callback with a locally generated timeout response
   void request(string queueName, Message requestMessage, void delegate(Message) callback) {
+    this.request(queueName, requestMessage, callback);
+  }
+
+  void request(string queueName, ref Message requestMessage, void delegate(Message) callback) {
     if (this.responseSubscription is null) {
       this.createResponseSubscription();
-    }
-
-    import core.time : Duration, seconds;
-
-    if (requestMessage.expiration == Duration.zero) {
-      requestMessage.expiration = 10.seconds;
     }
 
     if (requestMessage.correlationId.empty()) {
       requestMessage.correlationId = randomUUID();
     }
 
-    import std.datetime.systime : Clock;
-
-    const timeout = Clock.currTime + requestMessage.expiration;
-
-    this.requestCallbacks[requestMessage.correlationId] = callback;
-
     requestMessage.replyToQueueName = this.responseSubscription.getQueueName();
+
+    this.requests[requestMessage.correlationId] = Request(requestMessage, callback);
 
     this.publish(queueName, requestMessage);
   }
@@ -278,6 +301,17 @@ class Client {
         }
       } else {
         subscription.fiber.call();
+      }
+    }
+
+    foreach (request; this.requests) {
+      if (request.message.hasExpired == true) {
+        try {
+          request.callback(request.message.createResponse(ResponseTimeout()));
+        } catch (Exception exception) {
+          this.logger.error(exception);
+        }
+        this.requests.remove(request.message.correlationId);
       }
     }
 
@@ -323,14 +357,16 @@ class Client {
  * Client#connect/isConnected/close - connect to the AMQP server
  */
 unittest {
+  import dutils.testing : assertEqual;
+
   auto client = new Client();
-  assert(client.isConnected == true, "Expected client to be connected");
+  assertEqual(client.isConnected, true);
 
   client.close();
-  assert(client.isConnected == false, "Expected client to not be connected");
+  assertEqual(client.isConnected, false);
 
   client.connect();
-  assert(client.isConnected == true, "Expected client to be connected");
+  assertEqual(client.isConnected, true);
 
   ConnectException connectionError;
   try {
@@ -339,22 +375,22 @@ unittest {
     connectionError = exception;
   }
 
-  assert(connectionError.message
-      == "Unable to connect to AMQP 0-9-1 service at badhostname:5672 with username guest");
+  assertEqual(connectionError.message,
+      "Unable to connect to AMQP 0-9-1 service at badhostname:5672 with username guest");
 }
 
 /**
  * Client#subscribe/publish - subscribe/publish to a queue on an AMQP server
  */
 unittest {
-  import core.time : seconds;
+  import dutils.testing : assertEqual;
 
   for (int index; index < 10; index++) {
     auto client = new Client();
-    assert(client.isConnected == true, "Expected client to be connected");
+    assertEqual(client.isConnected, true);
 
     auto service = new Client();
-    assert(service.isConnected == true, "Expected service to be connected");
+    assertEqual(service.isConnected, true);
 
     struct DummyMessage {
       string story;
@@ -363,7 +399,6 @@ unittest {
     auto dummy = DummyMessage("Lorem ipsum dolor sit amet, consectetur adipisicing elit." ~ randomUUID()
         .toString());
     auto message = Message.from(dummy);
-    message.expiration = 500.seconds;
 
     if (index % 2 == 1) {
       client.publish("testqueue", message);
@@ -385,11 +420,9 @@ unittest {
     service.close();
     client.close();
 
-    assert(recievedMessage.type != "Error", "Expected message type to not be Error");
-    assert(recievedMessage.correlationId == message.correlationId,
-        "Expeceted correlationId to match");
-    assert(recievedMessage.payload["story"].get!string == dummy.story,
-        "Expeceted payload to be Lorem ipsum...");
+    assertEqual(recievedMessage.type, "DummyMessage");
+    assertEqual(recievedMessage.correlationId, message.correlationId);
+    assertEqual(recievedMessage.payload["story"].get!string, dummy.story);
   }
 }
 
@@ -398,11 +431,10 @@ unittest {
  */
 unittest {
   import std.conv : to;
-  import core.time : seconds, msecs;
-  import core.thread : Thread;
 
+  import dutils.testing : assertEqual;
   import dutils.data.bson : BSON;
-  import dutils.message.message : ResponsePayloadBadType;
+  import dutils.message.message : ResponseBadType;
 
   auto client = new Client();
   auto service = new Client();
@@ -417,7 +449,7 @@ unittest {
       auto payload = Pong("Playing ping pong with " ~ request.payload["name"].get!string);
       service.publish(request.replyToQueueName, request.createResponse(payload));
     } else {
-      auto payload = ResponsePayloadBadType(request.type, ["Ping"]);
+      auto payload = ResponseBadType(request.type, ["Ping"]);
       service.publish(request.replyToQueueName, request.createResponse(payload));
     }
   });
@@ -436,7 +468,7 @@ unittest {
   });
 
   auto badMessage = Message();
-  badMessage.type = "BadType";
+  badMessage.type = "ThisIsABadType";
   badMessage.correlationId = randomUUID();
 
   Message errorResponse;
@@ -452,23 +484,53 @@ unittest {
   service.close();
   client.close();
 
-  assert(response.type == "Pong", "Expected message type to be Pong");
-  assert(response.correlationId == message.correlationId, "Expected correlationId to match");
-  assert(response.payload["story"].get!string == "Playing ping pong with Anna",
-      "Expected payload to be: Playing ping pong with Anna");
-  assert(response.responseStatus == ResponseStatus.OK,
-      "Expected responseStatus to be ResponseStatus.OK got " ~ response.responseStatus.to!string);
-  assert(response.token == "this is a placeholder token",
-      "Expected response.token to equal request.token, got: " ~ response.token);
+  assertEqual(response.type, "Pong");
+  assertEqual(response.correlationId, message.correlationId);
+  assertEqual(response.payload["story"].get!string, "Playing ping pong with Anna");
+  assertEqual(response.responseStatus, ResponseStatus.OK);
+  assertEqual(response.token, "this is a placeholder token");
 
-  assert(errorResponse.type == "ResponsePayloadBadType",
-      "Expected message type to be ResponsePayloadBadType");
-  assert(errorResponse.correlationId == badMessage.correlationId, "Expected correlationId to match");
-  assert(errorResponse.payload["supportedTypes"][0].get!string == "Ping",
-      "Expected supportedTypes to include Ping");
-  assert(errorResponse.responseStatus == ResponseStatus.BAD_TYPE,
-      "Expected responseStatus to be ResponseStatus.BAD_TYPE got "
-      ~ errorResponse.responseStatus.to!string);
+  assertEqual(errorResponse.type, "ResponseBadType");
+  assertEqual(errorResponse.correlationId, badMessage.correlationId);
+  assertEqual(errorResponse.payload["supportedTypes"][0].get!string, "Ping");
+  assertEqual(errorResponse.responseStatus, ResponseStatus.BAD_TYPE);
+}
+
+/**
+ * Client#request - request timeout
+ */
+unittest {
+  import std.conv : to;
+  import core.time : msecs;
+
+  import dutils.testing : assertEqual;
+
+  auto client = new Client();
+
+  struct Ping {
+    string name;
+  }
+
+  auto payload = Ping("Anna");
+  auto message = Message.from(payload);
+  message.token = "this is a placeholder token";
+  message.setToExpireAfter(1000.msecs);
+
+  Message response;
+  client.request("testservicetimeout", message, (Message requestResponse) {
+    response = requestResponse;
+  });
+
+  while (response.isEmpty) {
+    client.update();
+  }
+
+  client.close();
+
+  assertEqual(response.type, "ResponseTimeout");
+  assertEqual(response.correlationId, message.correlationId);
+  assertEqual(response.responseStatus, ResponseStatus.TIMEOUT);
+  assertEqual(response.token, "this is a placeholder token");
 }
 
 /**
@@ -476,6 +538,8 @@ unittest {
  */
 unittest {
   import dutils.data.bson : BSON;
+
+  import dutils.testing : assertEqual;
 
   auto client = new Client();
 
@@ -499,5 +563,5 @@ unittest {
 
   client.keepUpdating();
 
-  assert(gotMessage, "Should have recieved a Hello message");
+  assertEqual(gotMessage, true);
 }

@@ -9,7 +9,8 @@ import symmetry.api.rabbitmq;
 import dutils.data.bson : BSON;
 import dutils.message.message : Message, ResponseStatus;
 import dutils.message.client : Client, QueueType;
-import dutils.message.exceptions : SubscribeQueueException, MessageBodyException;
+import dutils.message.exceptions : SubscribeQueueException,
+  MessageBodyException, MessageHeaderException;
 
 class Subscription {
   private Client client;
@@ -128,11 +129,6 @@ class Subscription {
 
     auto message = Message();
 
-    if (envelope.message.properties._flags & AMQP_BASIC_EXPIRATION_FLAG) {
-      auto value = envelope.message.properties.expiration.asString();
-      message.expiration = msecs(value.to!long);
-    }
-
     if (envelope.message.properties._flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
       message.correlationId = UUID(envelope.message.properties.correlation_id.asString());
     }
@@ -149,19 +145,33 @@ class Subscription {
     }
 
     if (envelope.message.properties._flags & AMQP_BASIC_HEADERS_FLAG) {
+      import std.datetime.systime : SysTime;
+
       auto headers = envelope.message.properties.headers;
+
       for (int index = 0; index < headers.num_entries; index++) {
         auto entry = headers.entries[index];
         auto key = entry.key.asString();
 
-        if (key == "token") {
+        if (key == "created") {
+          try {
+            message.created = SysTime.fromISOExtString(entry.value.value.bytes.asString());
+          } catch (Exception exception) {
+            throw new MessageHeaderException(key, message.type);
+          }
+        } else if (key == "expires") {
+          try {
+            message.expires = SysTime.fromISOExtString(entry.value.value.bytes.asString());
+          } catch (Exception exception) {
+            throw new MessageHeaderException(key, message.type);
+          }
+        } else if (key == "token") {
           message.token = entry.value.value.bytes.asString();
         } else if (key == "responseStatus") {
           try {
             message.responseStatus = (cast(int) entry.value.value.u16).to!ResponseStatus;
           } catch (Exception exception) {
-            // TODO: Add more specific exception than mentions that the responseStatus parsing failed
-            throw new MessageBodyException(message.type);
+            throw new MessageHeaderException(key, message.type);
           }
         }
       }

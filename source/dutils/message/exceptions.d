@@ -52,6 +52,13 @@ class MessageBodyException : Exception {
   }
 }
 
+class MessageHeaderException : Exception {
+  this(string headerName, string type, string file = __FILE__, size_t line = __LINE__) {
+    super("Failed to parse message header " ~ headerName ~ " for message of type " ~ type,
+        file, line);
+  }
+}
+
 class TypeMismatchException : Exception {
   this(string expectedType, string type, string file = __FILE__, size_t line = __LINE__) {
     super("Expected type " ~ expectedType ~ " but got " ~ type, file, line);
