@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [2.0.1](https://github.com/d-utils/message/compare/v2.0.0...v2.0.1) (2020-06-07)
+
+
+### Bug Fixes
+
+* **Client#connect:** pass on user/pass correctly ([4c75f90](https://github.com/d-utils/message/commit/4c75f900b44f38fe3727e48d61ee4a34f448ad77))
+
 ## [2.0.0](https://github.com/d-utils/message/compare/v1.5.0...v2.0.0) (2020-06-02)
 
 
