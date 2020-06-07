@@ -8,7 +8,8 @@ import symmetry.api.rabbitmq;
 import util.log : Log, stderrLogger, stdoutLogger, LogLevel, orBelow;
 
 import dutils.validation.validate : validate;
-import dutils.validation.constraints : ValidateRequired, ValidateMinimumLength;
+import dutils.validation.constraints : ValidateRequired, ValidateMinimumLength,
+  ValidateMaximum, ValidateMinimum;
 import dutils.random : randomUUID;
 import dutils.message.message : Message, ResponseStatus, SetResponseStatus, ResponseTimeout;
 import dutils.message.subscription : Subscription;
@@ -20,7 +21,7 @@ struct ClientParameters {
   string host = "localhost";
 
   @ValidateRequired()
-  int port = 5672;
+  @ValidateMinimum!ushort(1) @ValidateMaximum!ushort(65535) ushort port = 5672;
 
   @ValidateRequired()
   @ValidateMinimumLength(1)
@@ -93,12 +94,16 @@ class Client {
       enforce(socket !is null, "creating tcp socket");
 
       import std.string : toStringz, fromStringz;
+      import std.conv : to;
 
-      auto status = amqp_socket_open(socket, this.parameters.host.toStringz, this.parameters.port);
+      auto status = amqp_socket_open(socket, this.parameters.host.toStringz,
+          this.parameters.port.to!int);
       enforce(status == 0, "opening socket: " ~ amqp_error_string2(status).fromStringz);
-      die_on_amqp_error(amqp_login(connection, "/".ptr, 0, 131072, 0,
-          SaslMethod.plain, this.parameters.username.ptr, this.parameters.password.ptr),
-          "Logging in");
+
+      auto username = this.parameters.username;
+      auto password = this.parameters.password;
+      die_on_amqp_error(amqp_login(connection, "/", 0, 131072, 0,
+          SaslMethod.plain, username.toStringz, password.toStringz), "Logging in");
 
       amqp_channel_open(connection, 1);
       die_on_amqp_error(amqp_get_rpc_reply(connection), "Opening channel");
