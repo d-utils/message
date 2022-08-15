@@ -426,7 +426,7 @@ unittest {
     client.close();
 
     assertEqual(recievedMessage.type, "DummyMessage");
-    assertEqual(recievedMessage.correlationId, message.correlationId);
+    assertEqual(recievedMessage.correlationId.toString(), message.correlationId.toString());
     assertEqual(recievedMessage.payload["story"].get!string, dummy.story);
   }
 }
@@ -490,13 +490,13 @@ unittest {
   client.close();
 
   assertEqual(response.type, "Pong");
-  assertEqual(response.correlationId, message.correlationId);
+  assertEqual(response.correlationId.toString(), message.correlationId.toString());
   assertEqual(response.payload["story"].get!string, "Playing ping pong with Anna");
   assertEqual(response.responseStatus, ResponseStatus.OK);
   assertEqual(response.token, "this is a placeholder token");
 
   assertEqual(errorResponse.type, "ResponseBadType");
-  assertEqual(errorResponse.correlationId, badMessage.correlationId);
+  assertEqual(errorResponse.correlationId.toString(), badMessage.correlationId.toString());
   assertEqual(errorResponse.payload["supportedTypes"][0].get!string, "Ping");
   assertEqual(errorResponse.responseStatus, ResponseStatus.BAD_TYPE);
 }
@@ -533,7 +533,7 @@ unittest {
   client.close();
 
   assertEqual(response.type, "ResponseTimeout");
-  assertEqual(response.correlationId, message.correlationId);
+  assertEqual(response.correlationId.toString(), message.correlationId.toString());
   assertEqual(response.responseStatus, ResponseStatus.TIMEOUT);
   assertEqual(response.token, "this is a placeholder token");
 }
